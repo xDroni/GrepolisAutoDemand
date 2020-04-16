@@ -13,5 +13,8 @@
     "node-fetch": "^2.6.0",
     "node-gzip": "^1.1.2",
     "puppeteer-core": "^2.1.1"
+  },
+  "devDependencies": {
+    "form-data": "^3.0.0"
   }
 }

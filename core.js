@@ -1,19 +1,21 @@
 const puppeteer = require('puppeteer-core');
 const fetch = require('node-fetch');
 const { URLSearchParams } = require('url');
+const FormData = require('form-data');
 
-const {cookiesArrayToString} = require('./common');
+const {cookiesArrayToString, cookiesStringToArray, getRandomInt} = require('./common');
 
 const grepolis = {
     launchBrowser: async (path = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe') => {
         console.log('Launching the browser in headless mode');
         return  puppeteer.launch({
             executablePath: path,
-            headless: false
+            // headless: false
         });
     },
 
     closeBrowser: async (browser) => {
+        console.log('Closing browser');
         await browser.close();
     },
 
@@ -94,77 +96,7 @@ const grepolis = {
         });
     },
 
-    enterTheWorldAndGetData: async (browser, login, password, worldNumber) => {
-         let cookies = null;
-        // let cookies = [
-        //     {
-        //         name: 'ig_conv_last_site',
-        //         value: 'https://pl86.grepolis.com/game/index',
-        //         domain: '.grepolis.com',
-        //         path: '/',
-        //         expires: 1617925081,
-        //         size: 53,
-        //         httpOnly: false,
-        //         secure: false,
-        //         session: false
-        //     },
-        //     {
-        //         name: 'toid',
-        //         value: '24756',
-        //         domain: 'pl86.grepolis.com',
-        //         path: '/',
-        //         expires: 1588981080.323397,
-        //         size: 9,
-        //         httpOnly: false,
-        //         secure: false,
-        //         session: false
-        //     },
-        //     {
-        //         name: 'logged_in',
-        //         value: 'false',
-        //         domain: 'pl86.grepolis.com',
-        //         path: '/',
-        //         expires: -1,
-        //         size: 14,
-        //         httpOnly: false,
-        //         secure: false,
-        //         session: true
-        //     },
-        //     {
-        //         name: 'sid',
-        //         value: 'ks84go4wwo448cs8wgwcc44ggo4s08sog4kcw84wwgc0kkcswcs4wcwosokcgwcs',
-        //         domain: 'pl86.grepolis.com',
-        //         path: '/',
-        //         expires: 1617925079.990739,
-        //         size: 67,
-        //         httpOnly: true,
-        //         secure: true,
-        //         session: false
-        //     },
-        //     {
-        //         name: 'cid',
-        //         value: '1931213242',
-        //         domain: 'pl86.grepolis.com',
-        //         path: '/',
-        //         expires: 1649461079.990713,
-        //         size: 13,
-        //         httpOnly: false,
-        //         secure: false,
-        //         session: false
-        //     },
-        //     {
-        //         name: 'metricsUvId',
-        //         value: '6c6f76ac-2bad-4f0a-b5a9-935ca019aa86',
-        //         domain: '.grepolis.com',
-        //         path: '/',
-        //         expires: 4742062674,
-        //         size: 47,
-        //         httpOnly: false,
-        //         secure: false,
-        //         session: false
-        //     }
-        // ]
-
+    enterTheWorldAndGetData: async (browser, login, password, worldNumber, cookies) => {
         const page = await browser.newPage();
         await page.setRequestInterception(true);
 
@@ -177,7 +109,7 @@ const grepolis = {
         });
 
         await page.goto('https://pl.grepolis.com/', {waitUntil: 'networkidle2'});
-        if(cookies === null) {
+        if(!cookies) {
             /* Logging in */
             let loginError;
             let secondAttempt = false;
@@ -231,15 +163,18 @@ const grepolis = {
             console.log('Loading the world...');
 
             await page.waitForNavigation();
-            const cookiesArr = await page.cookies();
-            console.log(cookiesArr);
-            console.log(cookiesArrayToString(cookiesArr));
         }
         else {
+            if(typeof cookies === 'string') cookies = cookiesStringToArray(cookies);
             await page.setCookie(...cookies);
-            await page.goto('https://pl87.grepolis.com/game/index', {waitUntil: 'load'});
+            console.log('Cookies set');
+            await page.goto('https://pl86.grepolis.com/game/index', {waitUntil: 'networkidle2'}); ///TODO hardcoded world id!!!
             await page.waitFor(2000);
         }
+
+        const cookiesArr = await page.cookies();
+        console.log(cookiesArrayToString(cookiesArr));
+        console.log(page.url());
 
         const data = await page.evaluate(() => {
             let farm_town_data = MM.getOnlyCollectionByName('FarmTown');
@@ -257,6 +192,7 @@ const grepolis = {
 
         return {
             token: data.token,
+            cookies: cookiesArrayToString(cookiesArr),
             farm_town_data: JSON.parse(data.farm_town_data), // wszystkie wioski
             town_collection: JSON.parse(data.town_collection), // wszystkie miasta gracza
             farm_town_relations: JSON.parse(data.farm_town_relations) // wszystkie relacje wioska miasto
@@ -285,17 +221,19 @@ const grepolis = {
                         return farmTown.island_x === town.island_x && farmTown.island_y === town.island_y
                     });
 
-                    farmTowns = farmTowns.filter(farmTown => {
+                    for(const farmTown of farmTowns) {
                         const relation = farm_town_relations.find(farmTownRelation => {
                             return farmTownRelation.farm_town_id === farmTown.id
                         });
                         data[i].farmTowns.push({
                             farmTownRelation: relation.id,
                             farmTownId: relation.farm_town_id,
-                            isBuilt: relation.relation_status === 1
+                            farmTownName: farmTown.name,
+                            isBuilt: relation.relation_status === 1,
+                            lootableAt: relation.lootable_at
 
                         });
-                    });
+                    }
                     i++
                 } else {
                     data[i-1].towns.push({
@@ -304,63 +242,159 @@ const grepolis = {
                     });
                 }
         }
-        console.log(JSON.stringify(data, null,2));
         return data;
+    },
 
-        // let data = [];
-        // for (const [index, relation] of farm_town_relations.entries()) {
-        //     const farmTown = farm_town_data.find(farmTown => {
-        //         return farmTown.id === relation.farm_town_id
-        //     });
-        //
-        //     data.push({
-        //         farmTownId: farmTown.id,
-        //         farmTownName: farmTown.name,
-        //         farmTownRelationId: relation.id,
-        //         isBuilt: relation.relation_status === 1,
-        //         towns: []
-        //     });
-        //
-        //     const towns = town_collection.filter(town => {
-        //         return town.island_x === farmTown.island_x && town.island_y === farmTown.island_y
-        //     });
-        //
-        //     for(const town of towns) {
-        //         data[index].towns.push({
-        //             townId: town.id,
-        //             townName: town.name
-        //         })
-        //     }
-        // }
-        // console.log(JSON.stringify(data, null,2));
+    demand: (token, cookies, farmTown, town, waitTime) => {
+        const waitTimeRandomized = (waitTime * 1000 + getRandomInt(-waitTime * 1000 / 2, waitTime * 1000 / 2));
+        return new Promise((resolve, reject) => {
+            console.log('Waiting', waitTimeRandomized / 1000, 'seconds before next demand');
+
+            const data = {
+                model_url: `FarmTownPlayerRelation/${farmTown.farmTownRelation}`,
+                action_name: 'claim',
+                arguments: {
+                    farm_town_id: farmTown.farmTownId,
+                    type: 'resources',
+                    option: 1
+                },
+                town_id: town.townId,
+                nl_init: true
+            };
+
+            let formData = new FormData();
+            formData.append('json', JSON.stringify(data));
+
+            setTimeout(() => {
+                fetch(`https://pl86.grepolis.com/game/frontend_bridge?town_id=${town.townId}&action=execute&h=${token}`, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Cookie': cookies
+                    }
+                }).catch(err => {
+                    reject({ connectionError: err });
+                    throw new Error(err);
+                })
+                    .then(res => res.json())
+                    .then(response => {
+                        const responseJson = response.json;
+                        if (responseJson.success) {
+                            resolve({townName: town.townName, farmTownName: farmTown.farmTownName})
+                        } else {
+                            reject(responseJson)
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        reject(err);
+                    });
+            }, waitTimeRandomized)
+        })
+    },
+
+    fakeRequestsBeforeDemand: (token, cookies, farmTown, town, waitTime) => {
+        const waitTimeRandomized = (waitTime * 1000 + getRandomInt(-waitTime * 1000 / 2, waitTime * 1000 / 2));
+        return new Promise((resolve, reject) => {
+            console.log('Waiting', waitTimeRandomized / 1000, 'seconds before faking request');
+            const data = {
+                model_url: `FarmTownPlayerRelation/${farmTown.farmTownRelation}`,
+                action_name: 'getTownSpecificData',
+                arguments: {
+                    farm_town_id: farmTown.farmTownId
+                },
+                town_id: town.townId,
+                nl_init: true
+            };
+            let formData = new FormData();
+
+            formData.append('json', JSON.stringify(data));
+            setTimeout(() => {
+                fetch(`https://pl86.grepolis.com/game/frontend_bridge?town_id=${town.townId}&action=execute&h=${token}`, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Cookie': cookies
+                    }
+                })
+                    .catch(err => {
+                        reject({connectionError: err});
+                        throw new Error(err);
+                    })
+                    .then(res => res.json())
+                    .then(response => {
+                        const responseJson = response.json;
+                        resolve(responseJson);
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        reject(err);
+                    });
+            }, waitTimeRandomized)
+
+        })
+    },
+
+    conquerorDemand: (token, cookies, farmTowns, town, waitTime) => {
+        const waitTimeRandomized = (waitTime * 1000 + getRandomInt(-waitTime * 1000 / 2, waitTime * 1000 / 2));
+        return new Promise((resolve, reject) => {
+            console.log('Waiting', waitTimeRandomized / 1000, 'seconds before next demand');
+
+            setTimeout(() => {
+                const params = new URLSearchParams();
+                const json = {
+                    town_id: town.townId,
+                    nl_init: true
+                }
+                params.append('town_id', town.townId);
+                params.append('action', 'index');
+                params.append('h', token);
+                params.append('json', JSON.stringify(json));
+
+                fetch(`https://pl86.grepolis.com/game/farm_town_overviews?${params}`, {
+                    method: 'GET',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Cookie': cookies
+                    }
+                }).catch(err => {
+                    reject({ connectionError: err });
+                    throw new Error(err);
+                })
+                    .then(res => res.json())
+                    .then(response => {
+                        const responseJson = response.json;
+                        if (responseJson.towns) {
+                            resolve({ towns: responseJson.towns })
+                        } else {
+                            reject(responseJson)
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        reject(err);
+                    });
+            }, waitTimeRandomized)
+        })
+    },
 
 
-        //     let data = [];
-    //     for (const [index, town] of town_collection.entries()) {
-    //         data.push({
-    //             townId: town.id,
-    //             townName: town.name,
-    //             islandId: town.island_id,
-    //             farmTowns: []
-    //         });
-    //
-    //         let farmTowns = farm_town_data.filter(farmTown => {
-    //             return farmTown.island_x === town.island_x && farmTown.island_y === town.island_y
-    //         });
-    //
-    //         farmTowns = farmTowns.filter(farmTown => {
-    //             const relation = farm_town_relations.find(farmTownRelation => {
-    //                 return farmTownRelation.farm_town_id === farmTown.id
-    //             });
-    //             data[index].farmTowns.push({
-    //                 farmTownRelation: relation.id,
-    //                 farmTownId: relation.farm_town_id,
-    //                 isBuilt: relation.relation_status === 1
-    //
-    //             });
-    //         });
-    //     }
-    //     console.log(JSON.stringify(data, null,2));
+    waitForIslandChange: (waitTime) => {
+        const waitTimeRandomized = (waitTime*1000 + getRandomInt(-waitTime*1000 / 2, waitTime*1000 / 2));
+        return new Promise((resolve) => {
+            console.log('Waiting', waitTimeRandomized/1000, 'seconds for island to change');
+            setTimeout(() => resolve(), waitTimeRandomized);
+        })
+    },
+
+    waitForNextDemand: (waitTime) => {
+        const waitTimeRandomized = (waitTime*1000 + getRandomInt(14*1000, 137*1000));
+        return new Promise((resolve) => {
+            console.log('Waiting', waitTimeRandomized/1000, 'seconds until demands get available again');
+            setTimeout(() => resolve(), waitTimeRandomized);
+        })
     }
 };
 

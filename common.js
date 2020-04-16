@@ -2,6 +2,7 @@ const fs = require('fs');
 
 /**
  * @param {Array} cookiesArray
+ * @returns {String} cookiesString
  */
 function cookiesArrayToString(cookiesArray) {
     let cookiesString = '';
@@ -9,6 +10,31 @@ function cookiesArrayToString(cookiesArray) {
         cookiesString += cookie.name + '=' + cookie.value + '; ';
     }
     return cookiesString
+}
+
+/**
+ * @param {String} cookiesString
+ * @returns {Array} cookiesArray
+ */
+function cookiesStringToArray(cookiesString) {
+    let cookiesArray = [];
+    const chunks = cookiesString.split('; ');
+    for(const chunk of chunks) {
+        let strings = chunk.split('=');
+        if(strings[0] === 'sid') {
+            cookiesArray.push({
+                name: strings[0],
+                value: strings[1],
+                domain: 'pl86.grepolis.com'
+            })
+        } else {
+            cookiesArray.push({
+                name: strings[0],
+                value: strings[1]
+            })
+        }
+    }
+    return cookiesArray;
 }
 
 function saveToFile(data) {
@@ -68,5 +94,52 @@ function getUsernamesFromFile() {
         })
     })
 }
+function getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
-module.exports = { cookiesArrayToString, saveToFile, getUsernamesFromFile: getUsernamesFromFile };
+/** @param {string} str */
+function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ *  @param {string} name
+ *  @returns {(string|null)}
+ */
+function getArgument(name) {
+    for (let arg of process.argv) {
+        let regexp = new RegExp(`^${escapeRegExp(name)}`);
+        if( arg.match(regexp) )
+            return arg.replace(regexp, '').substring(1);
+    }
+
+    return null;
+}
+
+/**
+ *  @param {Array} array
+ *  @returns {Array}
+ */
+function shuffleTheArray(array) {
+    let m = array.length, t, i;
+    while(m) {
+        i = Math.floor(Math.random() * m--);
+        t = array[m];
+        array[m] = array[i];
+        array[i] = t;
+    }
+    return array;
+}
+
+module.exports = {
+    cookiesArrayToString,
+    cookiesStringToArray,
+    saveToFile,
+    getUsernamesFromFile,
+    getRandomInt,
+    getArgument,
+    shuffleTheArray
+};
