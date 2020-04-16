@@ -96,6 +96,31 @@ const grepolis = {
         });
     },
 
+    getGameData: async (cookie) => {
+        const result = await fetch('https://pl86.grepolis.com/game/index', {
+            headers: {
+                cookie
+            }
+        })
+
+        const text = await result.text()
+        const regex = /(window\.Game = )(.*);/
+        const gameDataString = text.match(regex)[2]
+        return JSON.parse(gameDataString)
+    },
+
+    hasCaptain: (gameData) => {
+        const captainEndTime = gameData.premium_features.captain;
+        if(captainEndTime) {
+            return captainEndTime > Math.floor(Date.now() / 1000)
+        }
+        return false;
+    },
+
+    hasAutoExtendCaptain: (gameData) => {
+      return gameData.player_settings.extend_premium_captain;
+    },
+
     enterTheWorldAndGetData: async (browser, login, password, worldNumber, cookies) => {
         const page = await browser.newPage();
         await page.setRequestInterception(true);
@@ -379,7 +404,6 @@ const grepolis = {
             }, waitTimeRandomized)
         })
     },
-
 
     waitForIslandChange: (waitTime) => {
         const waitTimeRandomized = (waitTime*1000 + getRandomInt(-waitTime*1000 / 2, waitTime*1000 / 2));
